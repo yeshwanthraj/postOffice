@@ -115,7 +115,8 @@ class HttpEngine(
             val text = String(bytes.data, charset)
             ApiResponse(
                 code = resp.code,
-                message = resp.message,
+                // HTTP/2 has no reason phrase, so fall back to the standard one.
+                message = resp.message.ifBlank { reasonPhrase(resp.code) },
                 headers = resp.headers.map { it.first to it.second },
                 body = prettyPrint(text, contentType),
                 contentType = contentType,
@@ -147,6 +148,16 @@ class HttpEngine(
     }
 
     companion object {
+        fun reasonPhrase(code: Int): String = when (code) {
+            200 -> "OK"; 201 -> "Created"; 202 -> "Accepted"; 204 -> "No Content"
+            301 -> "Moved Permanently"; 302 -> "Found"; 304 -> "Not Modified"; 307 -> "Temporary Redirect"; 308 -> "Permanent Redirect"
+            400 -> "Bad Request"; 401 -> "Unauthorized"; 403 -> "Forbidden"; 404 -> "Not Found"; 405 -> "Method Not Allowed"
+            408 -> "Request Timeout"; 409 -> "Conflict"; 410 -> "Gone"; 415 -> "Unsupported Media Type"; 422 -> "Unprocessable Content"
+            429 -> "Too Many Requests"
+            500 -> "Internal Server Error"; 501 -> "Not Implemented"; 502 -> "Bad Gateway"; 503 -> "Service Unavailable"; 504 -> "Gateway Timeout"
+            else -> ""
+        }
+
         const val MAX_DISPLAY_BYTES = 2L * 1024 * 1024
 
         fun prettyPrint(text: String, contentType: String?): String {

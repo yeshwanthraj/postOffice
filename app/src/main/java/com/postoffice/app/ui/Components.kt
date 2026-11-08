@@ -5,6 +5,10 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
@@ -20,7 +24,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconToggleButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -46,33 +51,49 @@ import com.postoffice.app.model.KeyValue
 import com.postoffice.app.model.Templates
 import com.postoffice.app.model.VariableScope
 
+/** For URLs, header names/values, tokens: no autocorrect, suggestions or auto-capitalisation. */
+val TechnicalKeyboard = KeyboardOptions(
+    capitalization = KeyboardCapitalization.None,
+    autoCorrectEnabled = false,
+    keyboardType = KeyboardType.Ascii,
+)
+
 /** The variables currently in effect, used to colour `{{name}}` in text fields. */
 val LocalVariableScope = compositionLocalOf { VariableScope() }
 
-private val KnownVar = SpanStyle(color = Color(0xFF2E9E5B), background = Color(0x262E9E5B), fontWeight = FontWeight.Medium)
-private val UnknownVar = SpanStyle(color = Color(0xFFD03A3A), background = Color(0x26D03A3A), fontWeight = FontWeight.Medium)
-
-/** Colours `{{name}}` green when [scope] defines it and red when it doesn't. Text length is unchanged. */
-class VariableHighlighter(private val scope: VariableScope) : VisualTransformation {
+/** Colours `{{name}}` with [known] when [scope] defines it and [unknown] when it doesn't. Text length is unchanged. */
+class VariableHighlighter(
+    private val scope: VariableScope,
+    private val known: SpanStyle,
+    private val unknown: SpanStyle,
+) : VisualTransformation {
     override fun filter(text: AnnotatedString): TransformedText {
         if (!text.text.contains("{{")) return TransformedText(text, OffsetMapping.Identity)
         val styled = buildAnnotatedString {
             append(text)
             Templates.PATTERN.findAll(text.text).forEach { m ->
-                addStyle(if (scope.lookup(m.groupValues[1]) != null) KnownVar else UnknownVar, m.range.first, m.range.last + 1)
+                addStyle(if (scope.lookup(m.groupValues[1]) != null) known else unknown, m.range.first, m.range.last + 1)
             }
         }
         return TransformedText(styled, OffsetMapping.Identity)
     }
 
-    override fun equals(other: Any?) = other is VariableHighlighter && other.scope === scope
+    override fun equals(other: Any?) =
+        other is VariableHighlighter && other.scope === scope && other.known == known && other.unknown == unknown
     override fun hashCode() = System.identityHashCode(scope)
 }
 
 @Composable
 fun rememberVariableHighlighter(): VisualTransformation {
     val scope = LocalVariableScope.current
-    return remember(scope) { VariableHighlighter(scope) }
+    val palette = LocalPalette.current
+    return remember(scope, palette) {
+        VariableHighlighter(
+            scope,
+            known = SpanStyle(color = palette.variableKnown.fg, background = palette.variableKnown.bg, fontWeight = FontWeight.Medium),
+            unknown = SpanStyle(color = palette.variableUnknown.fg, background = palette.variableUnknown.bg, fontWeight = FontWeight.Medium),
+        )
+    }
 }
 
 /**
@@ -110,6 +131,7 @@ fun KeyValueEditor(
                     label = { Text(keyLabel) },
                     singleLine = true,
                     visualTransformation = highlighter,
+                    keyboardOptions = TechnicalKeyboard,
                     modifier = Modifier.weight(1f),
                 )
                 Spacer(Modifier.width(8.dp))
@@ -119,6 +141,7 @@ fun KeyValueEditor(
                     label = { Text(valueLabel) },
                     singleLine = true,
                     visualTransformation = if (row.secret) mask else highlighter,
+                    keyboardOptions = TechnicalKeyboard,
                     modifier = Modifier.weight(1.4f),
                 )
                 if (showSecretToggle) {
@@ -160,7 +183,11 @@ fun <T> DropdownSelector(
 ) {
     var open by remember { mutableStateOf(false) }
     Column(modifier) {
-        OutlinedButton(onClick = { open = true }) {
+        FilledTonalButton(
+            onClick = { open = true },
+            colors = ButtonDefaults.filledTonalButtonColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+            modifier = Modifier.heightIn(min = 56.dp),
+        ) {
             Text(
                 label(selected),
                 color = color(selected) ?: MaterialTheme.colorScheme.onSurface,

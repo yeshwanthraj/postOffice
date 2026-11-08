@@ -20,6 +20,7 @@ import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.DeleteSweep
 import androidx.compose.material.icons.outlined.WarningAmber
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -67,6 +68,7 @@ import java.util.Date
 @Composable
 fun MainScreen(vm: MainViewModel = viewModel()) {
     val state by vm.state.collectAsStateWithLifecycle()
+    val palette = LocalPalette.current
     val drawer = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     var showEnvironments by rememberSaveable { mutableStateOf(false) }
@@ -84,7 +86,9 @@ fun MainScreen(vm: MainViewModel = viewModel()) {
     CompositionLocalProvider(LocalVariableScope provides variableScope) {
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val showSidebar = maxWidth >= 720.dp
-        val sideBySide = maxWidth >= 1200.dp
+        // Narrower history on smaller tablets / split screen so the URL bar keeps room.
+        val sidebarWidth = if (maxWidth >= 1000.dp) 300.dp else 240.dp
+        val sideBySide = maxWidth - sidebarWidth >= 900.dp
 
         val history: @Composable (Modifier) -> Unit = { mod ->
             HistoryPane(
@@ -132,24 +136,24 @@ fun MainScreen(vm: MainViewModel = viewModel()) {
                         val where = state.envs.active?.name?.let { "$it or Globals" } ?: "Globals (no environment selected)"
                         val names = unresolved.joinToString(", ") { "{{$it}}" }
                         Row(Modifier.padding(top = 4.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Outlined.WarningAmber, null, tint = WarningColor, modifier = Modifier.size(16.dp))
+                            Icon(Icons.Outlined.WarningAmber, null, tint = palette.warning.fg, modifier = Modifier.size(16.dp))
                             Spacer(Modifier.width(6.dp))
                             Text(
                                 "$names ${if (unresolved.size == 1) "isn't" else "aren't"} defined in $where. Sent as written.",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = WarningColor,
+                                color = palette.warning.fg,
                             )
                         }
                     }
                     if (sideBySide) {
                         Row(Modifier.fillMaxSize()) {
                             RequestTabs(state.request, vm::updateRequest, Modifier.weight(1f).fillMaxHeight())
-                            VerticalDivider(Modifier.padding(horizontal = 16.dp))
+                            VerticalDivider(Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant)
                             ResponseViewer(state.response, state.report, Modifier.weight(1f).fillMaxHeight().padding(bottom = 16.dp))
                         }
                     } else {
                         RequestTabs(state.request, vm::updateRequest, Modifier.weight(1f).fillMaxWidth())
-                        HorizontalDivider(Modifier.padding(vertical = 8.dp))
+                        HorizontalDivider(Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.outlineVariant)
                         ResponseViewer(state.response, state.report, Modifier.weight(1f).fillMaxWidth().padding(bottom = 16.dp))
                     }
                 }
@@ -158,15 +162,19 @@ fun MainScreen(vm: MainViewModel = viewModel()) {
 
         if (showSidebar) {
             Row(Modifier.fillMaxSize()) {
-                Surface(tonalElevation = 1.dp, modifier = Modifier.width(300.dp).fillMaxHeight()) {
-                    history(Modifier.fillMaxSize())
+                Surface(color = MaterialTheme.colorScheme.surfaceContainerLow, modifier = Modifier.width(sidebarWidth).fillMaxHeight()) {
+                    // The sidebar isn't inside the Scaffold, so it must keep clear of the status/navigation bars itself.
+                    history(Modifier.fillMaxSize().systemBarsPadding())
                 }
+                VerticalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                 workspace()
             }
         } else {
             ModalNavigationDrawer(
                 drawerState = drawer,
-                drawerContent = { ModalDrawerSheet { history(Modifier.fillMaxSize()) } },
+                drawerContent = {
+                    ModalDrawerSheet(drawerContainerColor = MaterialTheme.colorScheme.surfaceContainerLow) { history(Modifier.fillMaxSize()) }
+                },
             ) { workspace() }
         }
     }
@@ -181,7 +189,8 @@ private fun HistoryPane(
     onClear: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Column(modifier.padding(top = 24.dp)) {
+    val palette = LocalPalette.current
+    Column(modifier.padding(top = 12.dp)) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("History", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
             if (items.isNotEmpty()) IconButton(onClick = onClear) {
@@ -208,7 +217,7 @@ private fun HistoryPane(
                 ) {
                     Text(
                         item.method.name,
-                        color = methodColor(item.method),
+                        color = palette.method(item.method),
                         fontWeight = FontWeight.Bold,
                         fontFamily = FontFamily.Monospace,
                         style = MaterialTheme.typography.labelMedium,

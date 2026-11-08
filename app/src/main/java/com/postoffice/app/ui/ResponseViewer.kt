@@ -1,6 +1,5 @@
 package com.postoffice.app.ui
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -11,11 +10,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -29,12 +26,12 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconToggleButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ScrollableTabRow
-import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -93,18 +90,12 @@ private fun ResponseContent(resp: ApiResponse, report: RunReport) {
     var tab by rememberSaveable { mutableIntStateOf(0) }
     var wrap by rememberSaveable { mutableStateOf(true) }
     val clipboard = LocalClipboardManager.current
+    val palette = LocalPalette.current
     val passed = report.tests.count { it.status == TestStatus.PASS }
     val counted = report.tests.count { it.status != TestStatus.SKIP }
 
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text(
-            "${resp.code} ${resp.message}".trim(),
-            color = Color.White,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier
-                .background(statusColor(resp.code), RoundedCornerShape(6.dp))
-                .padding(horizontal = 10.dp, vertical = 4.dp),
-        )
+        TintedLabel("${resp.code} ${resp.message}".trim(), palette.status(resp.code))
         Text("${resp.durationMs} ms", style = MaterialTheme.typography.labelLarge)
         Text(formatBytes(resp.sizeBytes), style = MaterialTheme.typography.labelLarge)
         Spacer(Modifier.weight(1f))
@@ -125,23 +116,28 @@ private fun ResponseContent(resp: ApiResponse, report: RunReport) {
         maxLines = 1,
         modifier = Modifier.padding(vertical = 4.dp),
     )
-    ScrollableTabRow(selectedTabIndex = tab, edgePadding = 0.dp) {
-        Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text("Body") })
-        Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text("Headers (${resp.headers.size})") })
-        Tab(
+    ScrollableTabRow(
+        selectedTabIndex = tab,
+        edgePadding = 0.dp,
+        containerColor = Color.Transparent,
+        divider = { HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant) },
+    ) {
+        AppTab(selected = tab == 0, onClick = { tab = 0 }, text = { Text("Body") })
+        AppTab(selected = tab == 1, onClick = { tab = 1 }, text = { Text("Headers (${resp.headers.size})") })
+        AppTab(
             selected = tab == 2, onClick = { tab = 2 },
             text = {
                 if (report.tests.isEmpty()) Text("Tests")
-                else Text("Tests ($passed/$counted)", color = if (passed == counted) PassColor else FailColor)
+                else Text("Tests ($passed/$counted)", color = if (passed == counted) palette.success.fg else palette.error.fg)
             },
         )
-        Tab(
+        AppTab(
             selected = tab == 3, onClick = { tab = 3 },
             text = {
                 val errors = report.logs.any { it.level == LogLevel.ERROR }
                 Text(
                     if (report.logs.isEmpty()) "Console" else "Console (${report.logs.size})",
-                    color = if (errors) FailColor else Color.Unspecified,
+                    color = if (errors) palette.error.fg else Color.Unspecified,
                 )
             },
         )
@@ -165,7 +161,14 @@ private fun ResponseContent(resp: ApiResponse, report: RunReport) {
                                 style = MaterialTheme.typography.bodySmall,
                             )
                         }
-                        Text(resp.body, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodyMedium, softWrap = wrap)
+                        val colored = remember(resp.body, resp.contentType, palette) {
+                            if (resp.body.length <= JsonHighlighter.MAX_CHARS && JsonHighlighter.looksLikeJson(resp.body, resp.contentType)) {
+                                JsonHighlighter.highlight(resp.body, palette.json)
+                            } else {
+                                AnnotatedString(resp.body)
+                            }
+                        }
+                        Text(colored, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodyMedium, softWrap = wrap)
                     }
                 }
             }
@@ -196,25 +199,17 @@ private fun ResponseContent(resp: ApiResponse, report: RunReport) {
 
 @Composable
 private fun TestList(tests: List<TestResult>) {
+    val palette = LocalPalette.current
     LazyColumn(Modifier.fillMaxSize().padding(top = 4.dp)) {
         items(tests) { t ->
             Column(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    val (label, color) = when (t.status) {
-                        TestStatus.PASS -> "Pass" to PassColor
-                        TestStatus.FAIL -> "Fail" to FailColor
-                        TestStatus.SKIP -> "Skip" to MaterialTheme.colorScheme.onSurfaceVariant
+                    val (label, tint) = when (t.status) {
+                        TestStatus.PASS -> "Pass" to palette.success
+                        TestStatus.FAIL -> "Fail" to palette.error
+                        TestStatus.SKIP -> "Skip" to palette.neutral
                     }
-                    Text(
-                        label,
-                        color = color,
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier
-                            .background(color.copy(alpha = 0.14f), RoundedCornerShape(6.dp))
-                            .padding(horizontal = 8.dp, vertical = 2.dp)
-                            .widthIn(min = 32.dp),
-                    )
+                    TintedLabel(label, tint, monospace = false)
                     Spacer(Modifier.width(10.dp))
                     Text(t.name, style = MaterialTheme.typography.bodyMedium)
                 }
@@ -222,10 +217,10 @@ private fun TestList(tests: List<TestResult>) {
                     SelectionContainer {
                         Text(
                             it,
-                            color = FailColor,
+                            color = palette.error.fg,
                             fontFamily = FontFamily.Monospace,
                             style = MaterialTheme.typography.bodySmall,
-                            modifier = Modifier.padding(start = 58.dp, top = 2.dp),
+                            modifier = Modifier.padding(start = 64.dp, top = 2.dp),
                         )
                     }
                 }
@@ -237,12 +232,13 @@ private fun TestList(tests: List<TestResult>) {
 
 @Composable
 private fun ConsoleList(logs: List<LogLine>) {
+    val palette = LocalPalette.current
     SelectionContainer {
         LazyColumn(Modifier.fillMaxSize().padding(top = 4.dp)) {
             items(logs) { line ->
                 val color = when (line.level) {
-                    LogLevel.ERROR -> FailColor
-                    LogLevel.WARN -> WarningColor
+                    LogLevel.ERROR -> palette.error.fg
+                    LogLevel.WARN -> palette.warning.fg
                     else -> MaterialTheme.colorScheme.onSurface
                 }
                 Row(Modifier.fillMaxWidth().padding(vertical = 3.dp)) {

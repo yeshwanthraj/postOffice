@@ -34,7 +34,8 @@ import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.ScrollableTabRow
-import androidx.compose.material3.Tab
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -45,7 +46,12 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -68,24 +74,39 @@ fun UrlBar(
     onCancel: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val palette = LocalPalette.current
+    val focus = LocalFocusManager.current
+    val keyboard = LocalSoftwareKeyboardController.current
+    // Close the keyboard on send so it doesn't cover the response.
+    val send = { focus.clearFocus(); keyboard?.hide(); onSend() }
     Row(modifier, verticalAlignment = Alignment.CenterVertically) {
         DropdownSelector(
             selected = request.method,
             options = HttpMethod.entries,
             label = { it.name },
-            color = { methodColor(it) },
+            color = { palette.method(it) },
             onSelect = { m -> onChange { it.copy(method = m) } },
         )
         Spacer(Modifier.width(8.dp))
         OutlinedTextField(
             value = request.url,
             onValueChange = { v -> onChange { it.copy(url = v) } },
-            placeholder = { Text("https://api.example.com/v1/resource") },
+            placeholder = { Text("https://api.example.com/v1/resource", maxLines = 1, overflow = TextOverflow.Ellipsis) },
             singleLine = true,
             textStyle = MaterialTheme.typography.bodyLarge.copy(fontFamily = FontFamily.Monospace),
             visualTransformation = rememberVariableHighlighter(),
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Send),
-            keyboardActions = KeyboardActions(onSend = { if (!loading) onSend() }),
+            colors = OutlinedTextFieldDefaults.colors(
+                unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                unfocusedBorderColor = Color.Transparent,
+            ),
+            keyboardOptions = KeyboardOptions(
+                capitalization = KeyboardCapitalization.None,
+                autoCorrectEnabled = false,
+                keyboardType = KeyboardType.Uri,
+                imeAction = ImeAction.Send,
+            ),
+            keyboardActions = KeyboardActions(onSend = { if (!loading) send() }),
             modifier = Modifier.weight(1f),
         )
         Spacer(Modifier.width(8.dp))
@@ -100,7 +121,7 @@ fun UrlBar(
                 Text("Cancel")
             }
         } else {
-            Button(onClick = onSend, modifier = Modifier.heightIn(min = 56.dp)) {
+            Button(onClick = send, modifier = Modifier.heightIn(min = 56.dp)) {
                 Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null)
                 Spacer(Modifier.width(8.dp))
                 Text("Send")
@@ -110,7 +131,7 @@ fun UrlBar(
 }
 
 private enum class RequestTab(val title: String) {
-    PARAMS("Params"), AUTH("Authorization"), HEADERS("Headers"), BODY("Body"), SCRIPTS("Scripts")
+    PARAMS("Params"), AUTH("Auth"), HEADERS("Headers"), BODY("Body"), SCRIPTS("Scripts")
 }
 
 @Composable
@@ -121,7 +142,12 @@ fun RequestTabs(
 ) {
     var selected by rememberSaveable { mutableIntStateOf(0) }
     Column(modifier) {
-        ScrollableTabRow(selectedTabIndex = selected, edgePadding = 0.dp) {
+        ScrollableTabRow(
+            selectedTabIndex = selected,
+            edgePadding = 0.dp,
+            containerColor = Color.Transparent,
+            divider = { HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant) },
+        ) {
             RequestTab.entries.forEachIndexed { i, tab ->
                 val count = when (tab) {
                     RequestTab.PARAMS -> request.params.count { it.isActive }
@@ -131,7 +157,7 @@ fun RequestTabs(
                     RequestTab.SCRIPTS -> listOf(request.preRequestScript, request.postResponseScript).count { it.isNotBlank() }
                 }
                 val showNumber = tab == RequestTab.PARAMS || tab == RequestTab.HEADERS || tab == RequestTab.SCRIPTS
-                Tab(
+                AppTab(
                     selected = selected == i,
                     onClick = { selected = i },
                     text = {
@@ -193,6 +219,7 @@ private fun AuthEditor(auth: AuthConfig, onChange: (AuthConfig) -> Unit) {
                     onValueChange = { onChange(auth.copy(username = it)) },
                     label = { Text("Username") },
                     singleLine = true,
+                    keyboardOptions = TechnicalKeyboard,
                     modifier = Modifier.fillMaxWidth(),
                 )
                 SecretField("Password", auth.password) { onChange(auth.copy(password = it)) }
@@ -204,6 +231,7 @@ private fun AuthEditor(auth: AuthConfig, onChange: (AuthConfig) -> Unit) {
                     onValueChange = { onChange(auth.copy(apiKeyName = it)) },
                     label = { Text("Key name") },
                     singleLine = true,
+                    keyboardOptions = TechnicalKeyboard,
                     modifier = Modifier.fillMaxWidth(),
                 )
                 SecretField("Value", auth.apiKeyValue) { onChange(auth.copy(apiKeyValue = it)) }
@@ -234,7 +262,7 @@ private fun SecretField(label: String, value: String, onChange: (String) -> Unit
         singleLine = true,
         textStyle = MaterialTheme.typography.bodyLarge.copy(fontFamily = FontFamily.Monospace),
         visualTransformation = if (visible) VisualTransformation.None else PasswordVisualTransformation(),
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, autoCorrectEnabled = false),
         trailingIcon = {
             IconButton(onClick = { visible = !visible }) {
                 Icon(if (visible) Icons.Default.VisibilityOff else Icons.Default.Visibility, contentDescription = "Toggle visibility")

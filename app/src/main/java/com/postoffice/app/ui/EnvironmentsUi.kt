@@ -179,7 +179,7 @@ fun EnvironmentManagerScreen(vm: MainViewModel, envs: EnvironmentState, onBack: 
         ) { padding ->
             Row(Modifier.padding(padding).fillMaxSize()) {
                 if (twoPane || !inDetail) {
-                    Surface(tonalElevation = if (twoPane) 1.dp else 0.dp, modifier = if (twoPane) Modifier.width(280.dp).fillMaxHeight() else Modifier.fillMaxSize()) {
+                    Surface(color = if (twoPane) MaterialTheme.colorScheme.surfaceContainerLow else MaterialTheme.colorScheme.surface, modifier = if (twoPane) Modifier.width(280.dp).fillMaxHeight() else Modifier.fillMaxSize()) {
                         EnvironmentList(
                             envs = envs,
                             selected = selected.takeIf { twoPane },
@@ -189,7 +189,7 @@ fun EnvironmentManagerScreen(vm: MainViewModel, envs: EnvironmentState, onBack: 
                         )
                     }
                 }
-                if (twoPane) VerticalDivider()
+                if (twoPane) VerticalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                 if (twoPane || inDetail) {
                     EnvironmentDetail(
                         vm = vm,
